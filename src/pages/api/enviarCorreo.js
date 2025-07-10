@@ -10,7 +10,6 @@ export const config = {
 
 export default async function handler(req, res) {
   // ✅ Aquí pausas el envío real del correo:
-  return res.status(200).json({ status: 'Simulado: correo no enviado' });
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
