@@ -3,18 +3,19 @@ import nodemailer from 'nodemailer';
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb' // 🆙 Límite ampliado
+      sizeLimit: '10mb' // 🆙 Aumenta límite para PDF
     }
   }
 };
 
 export default async function handler(req, res) {
-  // ✅ Aquí pausas el envío real del correo:
-
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método no permitido' });
+  }
 
   try {
     const data = req.body;
+
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -25,9 +26,9 @@ export default async function handler(req, res) {
 
     const html = `
       <h2>Solicitud de Permiso</h2>
-      <table>
+      <table border="1" cellpadding="6" cellspacing="0">
         ${Object.entries(data)
-          .filter(([k]) => k !== 'pdf')
+          .filter(([k]) => k !== 'pdf' && k !== 'correos')
           .map(([k, v]) => `<tr><td><strong>${k}</strong></td><td>${v}</td></tr>`)
           .join('')}
       </table>
@@ -35,7 +36,8 @@ export default async function handler(req, res) {
 
     await transporter.sendMail({
       from: `"BestWork App" <${process.env.EMAIL_USER}>`,
-      to: `${data.email}, mrestovic@bestwork.cl`,
+      to: ['mrestovic@bestwork.cl', data.email],
+      cc: ['cfigueroa@bestwork.cl'],
       subject: `Solicitud de permiso - ${data.nombre}`,
       html,
       attachments: [
@@ -44,10 +46,11 @@ export default async function handler(req, res) {
           content: data.pdf.split('base64,')[1],
           encoding: 'base64',
         },
-      ],
+      ]
     });
 
     return res.status(200).json({ ok: true });
+
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message });

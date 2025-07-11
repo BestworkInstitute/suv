@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { colaboradores } from './colaboradores';
 
 export default function Home() {
   const [modo, setModo] = useState('dias');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [datos, setDatos] = useState({
     nombre: '',
     rut: '',
@@ -16,12 +18,10 @@ export default function Home() {
     hastaDia: '',
     desdeHora: '',
     hastaHora: '',
-    fechaHora: '', // NUEVO CAMPO PARA FECHA EXACTA EN TRAMO HORARIO
+    fechaHora: '',
     motivo: '',
     totalDias: '',
   });
-
-  const departamentos = ['COBRANZA', 'ADMISIÓN', 'COORDINACIÓN ACADÉMICA', 'DIRECCIÓN', 'MARKETING', 'TI'];
 
   useEffect(() => {
     const hoy = new Date();
@@ -55,14 +55,47 @@ export default function Home() {
 
   const handleChange = e => {
     const { id, value } = e.target;
+    if (id === 'nombre') {
+      const sel = colaboradores.find(c => c.nombre === value);
+      if (sel) {
+        setDatos(prev => ({
+          ...prev,
+          nombre: sel.nombre,
+          rut: sel.rut,
+          departamento: sel.area.toUpperCase()
+        }));
+        return;
+      }
+    }
     setDatos(prev => ({ ...prev, [id]: value }));
   };
 
+  const validar = () => {
+    const campos = ['nombre','rut','email','departamento','motivo'];
+    for (const campo of campos) {
+      if (!datos[campo]) return `Falta completar: ${campo}`;
+    }
+    if (!/^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/.test(datos.email)) return 'Email inválido';
+    if (modo === 'dias' && (!datos.desdeDia || !datos.hastaDia)) return 'Faltan fechas para días';
+    if (modo === 'horas' && (!datos.fechaHora || !datos.desdeHora || !datos.hastaHora)) return 'Faltan datos para horas';
+    return '';
+  };
+
   const generarPDFyEnviar = async () => {
+    const errorMsg = validar();
+    if (errorMsg) {
+      setError(errorMsg);
+      return alert('❌ ' + errorMsg);
+    }
+    setError('');
     setLoading(true);
     try {
       const content = document.getElementById("pdf-preview");
+      const origBg = content.style.background;
+      content.style.background = '#fff';
       const canvas = await html2canvas(content, { scale: 2 });
+      content.style.background = origBg;
+
       const img = canvas.toDataURL("image/jpeg", 1);
       const doc = new jsPDF("p", "mm", "a4");
       const w = doc.internal.pageSize.getWidth();
@@ -70,6 +103,8 @@ export default function Home() {
       doc.addImage(img, "JPEG", 0, 0, w, h);
       const pdfBase64 = doc.output('datauristring');
       doc.save(`solicitud_permiso_${datos.nombre || 'trabajador'}.pdf`);
+
+      const numeroConfirmacion = Math.floor(Math.random() * 900000 + 100000).toString();
 
       const payload = {
         ...datos,
@@ -80,6 +115,24 @@ export default function Home() {
         totalHoras: 'N/A',
         celular: datos.celular || 'N/A',
         pdf: pdfBase64,
+        correos: ['mrestovic@bestwork.cl', 'cfigueroa@bestwork.cl'],
+      };
+
+      const flowPayload = {
+        NOMBRE: datos.nombre,
+        CORREO: datos.email,
+        CELULAR: datos.celular || 'N/A',
+        RUT: datos.rut,
+        DIASTOTALES: datos.totalDias || '0',
+        FECHAINICIO: datos.desdeDia || datos.fechaHora || '',
+        FECHAFIN: datos.hastaDia || datos.fechaHora || '',
+        HORAINICIO: datos.desdeHora || 'N/A',
+        HORAFIN: datos.hastaHora || 'N/A',
+        HORASTOTALES: 'N/A',
+        DEPARTAMENTO: datos.departamento,
+        TIPODEPERMISO: datos.permiso,
+        MOTIVO: datos.motivo,
+        NUMEROCONFIRMACION: numeroConfirmacion,
       };
 
       const resp1 = await fetch('/api/enviarCorreo', {
@@ -89,8 +142,7 @@ export default function Home() {
       });
       if (!resp1.ok) throw new Error('Error al enviar correo');
 
-      const { pdf: _, ...flowPayload } = payload;
-      const resp2 = await fetch('/api/notificarFlow', {
+      const resp2 = await fetch('https://flows.messagebird.com/flows/fcb3d826-b1a6-4df5-8c12-7663ba11ce6e/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(flowPayload)
@@ -113,19 +165,22 @@ export default function Home() {
         <h2>Solicitud de Permiso</h2>
 
         <label>Nombre</label>
-        <input id="nombre" value={datos.nombre} onChange={handleChange} />
+        <input id="nombre" list="nombres" value={datos.nombre} onChange={handleChange} />
+        <datalist id="nombres">
+          {colaboradores.map(c => <option key={c.rut} value={c.nombre}/>)}
+        </datalist>
+
         <label>RUT</label>
-        <input id="rut" value={datos.rut} onChange={handleChange} />
+        <input id="rut" value={datos.rut} readOnly />
+
         <label>Email</label>
         <input id="email" type="email" value={datos.email} onChange={handleChange} />
+
         <label>Celular</label>
         <input id="celular" type="tel" value={datos.celular} onChange={handleChange} />
 
         <label>Departamento</label>
-        <select id="departamento" value={datos.departamento} onChange={handleChange}>
-          <option value="">Selecciona...</option>
-          {departamentos.map(dep => <option key={dep} value={dep}>{dep}</option>)}
-        </select>
+        <input id="departamento" value={datos.departamento} readOnly />
 
         <label>Tipo de Permiso</label>
         <select id="permiso" value={datos.permiso} onChange={handleChange}>
@@ -149,10 +204,15 @@ export default function Home() {
               <label>Hasta</label>
               <input id="hastaDia" type="date" value={datos.hastaDia} onChange={handleChange} onBlur={calcularDias} />
             </div>
-            <label>Días totales</label>
-            <input type="number" value={datos.totalDias} readOnly />
           </div>
         )}
+
+              {modo === 'dias' && (
+        <>
+          <label>Días totales</label>
+          <input type="number" value={datos.totalDias} readOnly />
+        </>
+      )}
 
         {modo === 'horas' && (
           <>
@@ -192,7 +252,7 @@ export default function Home() {
       </div>
 
       <button className="btn" onClick={generarPDFyEnviar} disabled={loading}>
-        {loading ? 'Enviando...' : 'Generar PDF y Enviar'}
+        {loading ? '⏳ Enviando...' : '📤 Generar PDF y Enviar'}
       </button>
 
       <style jsx>{`
@@ -271,21 +331,6 @@ export default function Home() {
         .btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
-        }
-        .btn::after {
-          content: '';
-          display: ${loading ? 'inline-block' : 'none'};
-          width: 16px;
-          height: 16px;
-          margin-left: 10px;
-          border: 2px solid white;
-          border-top: 2px solid transparent;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
         }
       `}</style>
     </>
