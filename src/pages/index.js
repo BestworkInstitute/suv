@@ -54,21 +54,24 @@ export default function Home() {
   };
 
   const handleChange = e => {
-    const { id, value } = e.target;
-    if (id === 'nombre') {
-      const sel = colaboradores.find(c => c.nombre === value);
-      if (sel) {
-        setDatos(prev => ({
-          ...prev,
-          nombre: sel.nombre,
-          rut: sel.rut,
-          departamento: sel.area.toUpperCase()
-        }));
-        return;
-      }
+  const { id, value } = e.target;
+  if (id === 'nombre') {
+    const sel = colaboradores.find(c => c.nombre === value);
+    if (sel) {
+      setDatos(prev => ({
+        ...prev,
+        nombre: sel.nombre,
+        rut: sel.rut,
+        departamento: sel.area.toUpperCase(),
+        email: sel.correo || '',
+        celular: sel.celular || ''
+      }));
+      return;
     }
-    setDatos(prev => ({ ...prev, [id]: value }));
-  };
+  }
+  setDatos(prev => ({ ...prev, [id]: value }));
+};
+
 
   const validar = () => {
     const campos = ['nombre','rut','email','departamento','motivo'];
